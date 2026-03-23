@@ -135,50 +135,117 @@ function Invoke-ASRRules {
                 throw "Windows 11 or later required"
             }
             
-            # Check Windows Defender status and third-party AV
+            # Check for third-party security products (AV or EDR/XDR)
+            # This must happen BEFORE the Defender service check because:
+            # - Traditional AVs may stop WinDefend entirely
+            # - EDR/XDR (CrowdStrike, SentinelOne, etc.) leave WinDefend running in Passive Mode
+            # - In both cases, ASR rules are not enforceable
+            $securityProduct = $null
+            if (Get-Command Test-ThirdPartySecurityProduct -ErrorAction SilentlyContinue) {
+                $securityProduct = Test-ThirdPartySecurityProduct
+            }
+            else {
+                # Fallback: Dependencies.ps1 not loaded (standalone module execution)
+                # Inline 3-layer detection (mirrors Test-ThirdPartySecurityProduct)
+                $securityProduct = [PSCustomObject]@{
+                    Detected            = $false
+                    ProductName         = $null
+                    DetectionMethod     = $null
+                    DefenderPassiveMode = $false
+                }
+
+                # Layer 1: WMI SecurityCenter2
+                try {
+                    $avProducts = Get-CimInstance -Namespace "root/SecurityCenter2" -ClassName "AntiVirusProduct" -ErrorAction SilentlyContinue
+                    $thirdPartyAV = $avProducts | Where-Object { $_.displayName -notmatch "Windows Defender|Microsoft Defender" } | Select-Object -First 1
+                    if ($thirdPartyAV) {
+                        $securityProduct.Detected = $true
+                        $securityProduct.ProductName = $thirdPartyAV.displayName
+                        $securityProduct.DetectionMethod = "SecurityCenter2"
+                    }
+                }
+                catch { $null = $null }
+
+                # Layer 2: Defender Passive Mode (catches EDR/XDR)
+                if (-not $securityProduct.Detected) {
+                    try {
+                        $defenderStatus = Get-MpComputerStatus -ErrorAction SilentlyContinue
+                        if ($defenderStatus -and $defenderStatus.AMRunningMode -eq "Passive Mode") {
+                            $securityProduct.Detected = $true
+                            $securityProduct.DefenderPassiveMode = $true
+                            $securityProduct.DetectionMethod = "PassiveMode"
+
+                            # Layer 3: Known EDR service names for display name
+                            $edrServices = @(
+                                @{ Name = "CSFalconService";      Display = "CrowdStrike Falcon" },
+                                @{ Name = "SentinelAgent";         Display = "SentinelOne" },
+                                @{ Name = "CbDefense";             Display = "Carbon Black Cloud" },
+                                @{ Name = "CylanceSvc";            Display = "Cylance/Arctic Wolf Aurora" },
+                                @{ Name = "xagt";                  Display = "Trellix Endpoint Security (HX)" },
+                                @{ Name = "masvc";                 Display = "Trellix Agent" },
+                                @{ Name = "mfeatp";                Display = "Trellix Adaptive Threat Protection" },
+                                @{ Name = "cyserver";              Display = "Palo Alto Cortex XDR" },
+                                @{ Name = "EPSecurityService";     Display = "Bitdefender GravityZone" },
+                                @{ Name = "EPIntegrationService";  Display = "Bitdefender GravityZone" },
+                                @{ Name = "avp";                   Display = "Kaspersky Endpoint Security" },
+                                @{ Name = "klnagent";              Display = "Kaspersky Security Center Agent" },
+                                @{ Name = "SEPAgent";              Display = "Broadcom/Symantec Endpoint Protection" },
+                                @{ Name = "SepMasterService";      Display = "Broadcom/Symantec Endpoint Protection" },
+                                @{ Name = "ekrn";                  Display = "ESET Endpoint Security" },
+                                @{ Name = "EraAgentSvc";           Display = "ESET PROTECT Agent" },
+                                @{ Name = "Sophos MCS Agent";      Display = "Sophos Endpoint" },
+                                @{ Name = "HitmanPro.Alert";       Display = "Sophos Endpoint" }
+                            )
+
+                            foreach ($edr in $edrServices) {
+                                $svc = Get-Service -Name $edr.Name -ErrorAction SilentlyContinue
+                                if ($svc -and $svc.Status -eq "Running") {
+                                    $securityProduct.ProductName = $edr.Display
+                                    $securityProduct.DetectionMethod = "PassiveMode+Service"
+                                    break
+                                }
+                            }
+
+                            if (-not $securityProduct.ProductName) {
+                                $securityProduct.ProductName = "Unknown Security Product (Defender in Passive Mode)"
+                            }
+                        }
+                    }
+                    catch { $null = $null }
+                }
+            }
+
+            # If third-party security product detected, skip ASR gracefully
+            if ($securityProduct.Detected) {
+                $avName = $securityProduct.ProductName
+                Write-Host ""
+                Write-Host "========================================" -ForegroundColor Yellow
+                Write-Host "  ASR Module Skipped" -ForegroundColor Yellow
+                Write-Host "========================================" -ForegroundColor Yellow
+                Write-Host ""
+                Write-Host "Third-party security product detected: $avName" -ForegroundColor Cyan
+                Write-Host ""
+                Write-Host "ASR rules require Windows Defender as primary antivirus." -ForegroundColor Yellow
+                Write-Host "Your security solution ($avName) has its own protection features." -ForegroundColor Yellow
+                Write-Host ""
+                Write-Host "This is NOT an error - ASR will be skipped." -ForegroundColor Green
+                Write-Host ""
+
+                Write-Log -Level WARNING -Message "ASR skipped: Third-party security product detected ($avName). Detection: $($securityProduct.DetectionMethod)." -Module $moduleName
+
+                $result.Success = $true  # Not an error - intentional skip
+                $result.Warnings += "ASR skipped: Third-party security product detected ($avName). Your security solution provides its own protection."
+                $result.RulesApplied = 0
+
+                return $result
+            }
+
+            # No third-party product detected - verify Defender is actually running
             $defenderService = Get-Service -Name "WinDefend" -ErrorAction SilentlyContinue
             $defenderRunning = $defenderService -and $defenderService.Status -eq "Running"
-            
-            # Check for third-party antivirus (they disable Defender)
-            $thirdPartyAV = $null
-            try {
-                $avProducts = Get-CimInstance -Namespace "root/SecurityCenter2" -ClassName "AntiVirusProduct" -ErrorAction SilentlyContinue
-                $thirdPartyAV = $avProducts | Where-Object { $_.displayName -notmatch "Windows Defender|Microsoft Defender" } | Select-Object -First 1
-            }
-            catch {
-                # SecurityCenter2 not available - continue with Defender check only
-                $null = $null
-            }
-            
+
             if (-not $defenderRunning) {
-                if ($thirdPartyAV) {
-                    # Third-party AV detected - skip ASR gracefully (not an error!)
-                    $avName = $thirdPartyAV.displayName
-                    Write-Host ""
-                    Write-Host "========================================" -ForegroundColor Yellow
-                    Write-Host "  ASR Module Skipped" -ForegroundColor Yellow
-                    Write-Host "========================================" -ForegroundColor Yellow
-                    Write-Host ""
-                    Write-Host "Third-party antivirus detected: $avName" -ForegroundColor Cyan
-                    Write-Host ""
-                    Write-Host "ASR rules require Windows Defender to be active." -ForegroundColor Yellow
-                    Write-Host "Your antivirus ($avName) has its own protection features." -ForegroundColor Yellow
-                    Write-Host ""
-                    Write-Host "This is NOT an error - ASR will be skipped." -ForegroundColor Green
-                    Write-Host ""
-                    
-                    Write-Log -Level WARNING -Message "ASR skipped: Third-party AV detected ($avName). Defender disabled." -Module $moduleName
-                    
-                    $result.Success = $true  # Not an error - intentional skip
-                    $result.Warnings += "ASR skipped: Third-party antivirus detected ($avName). Your AV provides similar protection."
-                    $result.RulesApplied = 0
-                    
-                    return $result
-                }
-                else {
-                    # No third-party AV but Defender not running - this IS a problem
-                    throw "Windows Defender service is not running and no third-party antivirus detected. ASR rules require Defender to be active."
-                }
+                throw "Windows Defender service is not running and no third-party security product detected. ASR rules require Defender to be active."
             }
             
             # Load ASR rule definitions

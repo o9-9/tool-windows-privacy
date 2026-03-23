@@ -138,37 +138,160 @@ function Test-AuditPolAvailable {
     return $result
 }
 
+function Test-ThirdPartySecurityProduct {
+    <#
+    .SYNOPSIS
+        Detect third-party antivirus or EDR/XDR products
+
+    .DESCRIPTION
+        Unified detection function used by ASR module and Verify script.
+        Uses a 3-layer approach:
+
+        Layer 1: WMI SecurityCenter2 (catches traditional AV: Bitdefender, Kaspersky, Avira, Norton, ESET, etc.)
+        Layer 2: Defender Passive Mode via Get-MpComputerStatus (catches EDR/XDR: CrowdStrike, SentinelOne, etc.)
+        Layer 3: Known EDR service names (provides display name for Layer 2 detections)
+
+    .OUTPUTS
+        PSCustomObject with:
+        - Detected: Boolean - True if third-party product found
+        - ProductName: String - Name of detected product
+        - DetectionMethod: String - How it was detected (SecurityCenter2, PassiveMode, Service)
+        - DefenderPassiveMode: Boolean - True if Defender is in passive mode
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param()
+
+    $result = [PSCustomObject]@{
+        Detected            = $false
+        ProductName         = $null
+        DetectionMethod     = $null
+        DefenderPassiveMode = $false
+    }
+
+    # Layer 1: WMI SecurityCenter2 (traditional AV products)
+    try {
+        $avProducts = Get-CimInstance -Namespace "root/SecurityCenter2" -ClassName "AntiVirusProduct" -ErrorAction SilentlyContinue
+        $thirdPartyAV = $avProducts | Where-Object { $_.displayName -notmatch "Windows Defender|Microsoft Defender" } | Select-Object -First 1
+
+        if ($thirdPartyAV) {
+            $result.Detected = $true
+            $result.ProductName = $thirdPartyAV.displayName
+            $result.DetectionMethod = "SecurityCenter2"
+
+            # Also check passive mode for complete info
+            try {
+                $defenderStatus = Get-MpComputerStatus -ErrorAction SilentlyContinue
+                if ($defenderStatus -and $defenderStatus.AMRunningMode -eq "Passive Mode") {
+                    $result.DefenderPassiveMode = $true
+                }
+            }
+            catch { $null = $null }
+
+            return $result
+        }
+    }
+    catch {
+        # SecurityCenter2 not available (e.g., Server OS) - continue to Layer 2
+        $null = $null
+    }
+
+    # Layer 2: Defender Passive Mode detection (catches EDR/XDR like CrowdStrike, SentinelOne, etc.)
+    try {
+        $defenderStatus = Get-MpComputerStatus -ErrorAction SilentlyContinue
+        if ($defenderStatus -and $defenderStatus.AMRunningMode -eq "Passive Mode") {
+            $result.Detected = $true
+            $result.DefenderPassiveMode = $true
+            $result.DetectionMethod = "PassiveMode"
+
+            # Layer 3: Try to identify the specific EDR/XDR product by service name
+            $edrServices = @(
+                @{ Name = "CSFalconService";      Display = "CrowdStrike Falcon" },
+                @{ Name = "SentinelAgent";         Display = "SentinelOne" },
+                @{ Name = "CbDefense";             Display = "Carbon Black Cloud" },
+                @{ Name = "CylanceSvc";            Display = "Cylance/Arctic Wolf Aurora" },
+                @{ Name = "xagt";                  Display = "Trellix Endpoint Security (HX)" },
+                @{ Name = "masvc";                 Display = "Trellix Agent" },
+                @{ Name = "mfeatp";                Display = "Trellix Adaptive Threat Protection" },
+                @{ Name = "cyserver";              Display = "Palo Alto Cortex XDR" },
+                @{ Name = "EPSecurityService";     Display = "Bitdefender GravityZone" },
+                @{ Name = "EPIntegrationService";  Display = "Bitdefender GravityZone" },
+                @{ Name = "avp";                   Display = "Kaspersky Endpoint Security" },
+                @{ Name = "klnagent";              Display = "Kaspersky Security Center Agent" },
+                @{ Name = "SEPAgent";              Display = "Broadcom/Symantec Endpoint Protection" },
+                @{ Name = "SepMasterService";      Display = "Broadcom/Symantec Endpoint Protection" },
+                @{ Name = "ekrn";                  Display = "ESET Endpoint Security" },
+                @{ Name = "EraAgentSvc";           Display = "ESET PROTECT Agent" },
+                @{ Name = "Sophos MCS Agent";      Display = "Sophos Endpoint" },
+                @{ Name = "HitmanPro.Alert";       Display = "Sophos Endpoint" }
+            )
+
+            foreach ($edr in $edrServices) {
+                $svc = Get-Service -Name $edr.Name -ErrorAction SilentlyContinue
+                if ($svc -and $svc.Status -eq "Running") {
+                    $result.ProductName = $edr.Display
+                    $result.DetectionMethod = "PassiveMode+Service"
+                    return $result
+                }
+            }
+
+            # No known service found but Defender IS in passive mode = unknown product
+            $result.ProductName = "Unknown Security Product (Defender in Passive Mode)"
+            return $result
+        }
+    }
+    catch {
+        # Get-MpComputerStatus failed - Defender may not be available at all
+        $null = $null
+    }
+
+    return $result
+}
+
 function Test-WindowsDefenderAvailable {
     <#
     .SYNOPSIS
-        Check if Windows Defender is available and running
-        
+        Check if Windows Defender is available and running as primary AV
+
     .DESCRIPTION
-        Verifies Windows Defender service status (required for ASR module)
-        
+        Verifies Windows Defender service status (required for ASR module).
+        Now also detects Passive Mode where Defender is running but not primary.
+
     .OUTPUTS
         PSCustomObject with availability status
     #>
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
     param()
-    
+
     $result = [PSCustomObject]@{
         Available      = $false
         ServiceRunning = $false
+        IsPassiveMode  = $false
         ServiceName    = "WinDefend"
         Error          = $null
     }
-    
+
     try {
         $defenderService = Get-Service -Name "WinDefend" -ErrorAction SilentlyContinue
-        
+
         if ($defenderService) {
             $result.Available = $true
             $result.ServiceRunning = ($defenderService.Status -eq "Running")
-            
+
             if (-not $result.ServiceRunning) {
                 $result.Error = "Windows Defender service exists but is not running (Status: $($defenderService.Status))"
+            }
+            else {
+                # Check if Defender is in Passive Mode (another AV is primary)
+                try {
+                    $defenderStatus = Get-MpComputerStatus -ErrorAction SilentlyContinue
+                    if ($defenderStatus -and $defenderStatus.AMRunningMode -eq "Passive Mode") {
+                        $result.IsPassiveMode = $true
+                        $result.Error = "Windows Defender is running in Passive Mode (third-party security product is primary)"
+                    }
+                }
+                catch { $null = $null }
             }
         }
         else {
@@ -178,7 +301,7 @@ function Test-WindowsDefenderAvailable {
     catch {
         $result.Error = "Failed to check Windows Defender: $($_.Exception.Message)"
     }
-    
+
     return $result
 }
 
@@ -229,8 +352,20 @@ function Test-AllDependencies {
     # Check Windows Defender (CRITICAL for ASR)
     $result.ASR.defender = Test-WindowsDefenderAvailable
     if (-not $result.ASR.defender.Available -or -not $result.ASR.defender.ServiceRunning) {
-        $result.AllAvailable = $false
-        $result.MissingCritical += "Windows Defender (required for ASR module)"
+        # Check if a third-party security product is present (not a critical failure)
+        $thirdParty = Test-ThirdPartySecurityProduct
+        if ($thirdParty.Detected) {
+            $result.MissingOptional += "Windows Defender not primary (ASR skipped: $($thirdParty.ProductName))"
+        }
+        else {
+            $result.AllAvailable = $false
+            $result.MissingCritical += "Windows Defender (required for ASR module)"
+        }
+    }
+    elseif ($result.ASR.defender.IsPassiveMode) {
+        $thirdParty = Test-ThirdPartySecurityProduct
+        $productName = if ($thirdParty.ProductName) { $thirdParty.ProductName } else { "Unknown" }
+        $result.MissingOptional += "Windows Defender in Passive Mode (ASR skipped: $productName)"
     }
     
     return $result

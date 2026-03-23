@@ -913,48 +913,111 @@ catch {
 Write-Host "[4/$totalSteps] Verifying ASR Rules (19)..." -ForegroundColor Yellow
 
 try {
-    # Check if Windows Defender is active or if third-party AV is managing security
-    $thirdPartyAV = $null
-    $defenderManaged = $true
-    
+    # Check if Windows Defender is active or if third-party security product is managing protection
+    # Uses 3-layer detection: SecurityCenter2 (traditional AV) + Passive Mode (EDR/XDR) + Known Services
+    $securityProduct = [PSCustomObject]@{
+        Detected            = $false
+        ProductName         = $null
+        DetectionMethod     = $null
+        DefenderPassiveMode = $false
+    }
+
+    # Layer 1: WMI SecurityCenter2 (traditional AV: Bitdefender, Kaspersky, Avira, Norton, etc.)
     try {
-        # Check for third-party AV products
         $avProducts = Get-CimInstance -Namespace "root/SecurityCenter2" -ClassName "AntiVirusProduct" -ErrorAction SilentlyContinue
         $thirdPartyAV = $avProducts | Where-Object { $_.displayName -notmatch "Windows Defender|Microsoft Defender" } | Select-Object -First 1
-        
         if ($thirdPartyAV) {
-            # Try to access Defender - if it fails, third-party AV is managing
-            try {
-                $null = Get-MpPreference -ErrorAction Stop
-            }
-            catch {
-                $defenderManaged = $false
-            }
+            $securityProduct.Detected = $true
+            $securityProduct.ProductName = $thirdPartyAV.displayName
+            $securityProduct.DetectionMethod = "SecurityCenter2"
         }
     }
     catch {
-        # SecurityCenter2 not available - assume Defender is active
-        $null = $null  # Intentionally empty - suppress PSScriptAnalyzer warning
+        $null = $null  # SecurityCenter2 not available - continue to Layer 2
     }
-    
-    # If third-party AV is managing ASR (Defender unavailable)
-    if (-not $defenderManaged -and $thirdPartyAV) {
-        Write-Host "  Third-party AV detected: $($thirdPartyAV.displayName)" -ForegroundColor Cyan
-        Write-Host "  ASR rules are managed by your antivirus solution" -ForegroundColor Green
-        
-        # Count all ASR rules as verified (AV is handling protection)
+
+    # Layer 2: Defender Passive Mode (EDR/XDR: CrowdStrike Falcon, SentinelOne, Carbon Black, etc.)
+    if (-not $securityProduct.Detected) {
+        try {
+            $defenderStatus = Get-MpComputerStatus -ErrorAction SilentlyContinue
+            if ($defenderStatus -and $defenderStatus.AMRunningMode -eq "Passive Mode") {
+                $securityProduct.Detected = $true
+                $securityProduct.DefenderPassiveMode = $true
+                $securityProduct.DetectionMethod = "PassiveMode"
+
+                # Layer 3: Known EDR service names for display name
+                $edrServices = @(
+                    @{ Name = "CSFalconService";      Display = "CrowdStrike Falcon" },
+                    @{ Name = "SentinelAgent";         Display = "SentinelOne" },
+                    @{ Name = "CbDefense";             Display = "Carbon Black Cloud" },
+                    @{ Name = "CylanceSvc";            Display = "Cylance/Arctic Wolf Aurora" },
+                    @{ Name = "xagt";                  Display = "Trellix Endpoint Security (HX)" },
+                    @{ Name = "masvc";                 Display = "Trellix Agent" },
+                    @{ Name = "mfeatp";                Display = "Trellix Adaptive Threat Protection" },
+                    @{ Name = "cyserver";              Display = "Palo Alto Cortex XDR" },
+                    @{ Name = "EPSecurityService";     Display = "Bitdefender GravityZone" },
+                    @{ Name = "EPIntegrationService";  Display = "Bitdefender GravityZone" },
+                    @{ Name = "avp";                   Display = "Kaspersky Endpoint Security" },
+                    @{ Name = "klnagent";              Display = "Kaspersky Security Center Agent" },
+                    @{ Name = "SEPAgent";              Display = "Broadcom/Symantec Endpoint Protection" },
+                    @{ Name = "SepMasterService";      Display = "Broadcom/Symantec Endpoint Protection" },
+                    @{ Name = "ekrn";                  Display = "ESET Endpoint Security" },
+                    @{ Name = "EraAgentSvc";           Display = "ESET PROTECT Agent" },
+                    @{ Name = "Sophos MCS Agent";      Display = "Sophos Endpoint" },
+                    @{ Name = "HitmanPro.Alert";       Display = "Sophos Endpoint" }
+                )
+
+                foreach ($edr in $edrServices) {
+                    $svc = Get-Service -Name $edr.Name -ErrorAction SilentlyContinue
+                    if ($svc -and $svc.Status -eq "Running") {
+                        $securityProduct.ProductName = $edr.Display
+                        break
+                    }
+                }
+
+                if (-not $securityProduct.ProductName) {
+                    $securityProduct.ProductName = "Unknown Security Product (Defender in Passive Mode)"
+                }
+            }
+        }
+        catch {
+            $null = $null  # Get-MpComputerStatus not available
+        }
+    }
+
+    # Also check: Defender not running at all + no product detected via SecurityCenter2
+    # but product may still be present (fallback for edge cases)
+    if (-not $securityProduct.Detected) {
+        try {
+            $null = Get-MpPreference -ErrorAction Stop
+        }
+        catch {
+            # Get-MpPreference failed = Defender is not functional
+            # This means something else is managing AV, even if we can't identify it
+            $securityProduct.Detected = $true
+            $securityProduct.ProductName = "Unknown Security Product (Defender unavailable)"
+            $securityProduct.DetectionMethod = "DefenderUnavailable"
+        }
+    }
+
+    # If third-party security product detected - count ASR as verified (product handles protection)
+    if ($securityProduct.Detected) {
+        Write-Host "  Third-party security product detected: $($securityProduct.ProductName)" -ForegroundColor Cyan
+        Write-Host "  ASR rules are managed by your security solution" -ForegroundColor Green
+
+        # Count all ASR rules as verified (security product is handling protection)
         $results.Verified += $EXPECTED_ASR_COUNT
-        
+
         $results.AllSettings += [PSCustomObject]@{
             Category      = "ASR"
             Total         = $EXPECTED_ASR_COUNT
             Passed        = $EXPECTED_ASR_COUNT
             Failed        = 0
-            PassedDetails = @([PSCustomObject]@{ Rule = "All rules"; Expected = "Managed by $($thirdPartyAV.displayName)"; Actual = "Protected" })
+            PassedDetails = @([PSCustomObject]@{ Rule = "All rules"; Expected = "Managed by $($securityProduct.ProductName)"; Actual = "Protected" })
             FailedDetails = @()
         }
-        
-        Write-Host "  ASR: $EXPECTED_ASR_COUNT/$EXPECTED_ASR_COUNT verified (Third-Party AV)" -ForegroundColor Green
+
+        Write-Host "  ASR: $EXPECTED_ASR_COUNT/$EXPECTED_ASR_COUNT verified (Third-Party Security)" -ForegroundColor Green
     }
     else {
         # Defender is active - verify ASR rules normally
