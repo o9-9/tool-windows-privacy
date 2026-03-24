@@ -13,10 +13,10 @@
     Output file for checksums. Default: CHECKSUMS.sha256 in the same directory.
 
 .EXAMPLE
-    .\Generate-ReleaseChecksums.ps1 -ReleasePath "C:\Release\NoIDPrivacy-v2.2.3"
+    .\Generate-ReleaseChecksums.ps1 -ReleasePath "C:\Release\NoIDPrivacy-v2.2.4"
     
 .EXAMPLE
-    .\Generate-ReleaseChecksums.ps1 -ReleasePath ".\NoIDPrivacy-v2.2.3.zip"
+    .\Generate-ReleaseChecksums.ps1 -ReleasePath ".\NoIDPrivacy-v2.2.4.zip"
 #>
 
 [CmdletBinding()]

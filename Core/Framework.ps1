@@ -8,7 +8,7 @@
     
 .NOTES
     Author: NexusOne23
-    Version: 2.2.3
+    Version: 2.2.4
     Requires: PowerShell 5.1+
     
 .EXAMPLE
@@ -24,7 +24,7 @@
 # All configuration comes from config.json via Initialize-Config.
 
 # Script-level variables
-$script:FrameworkVersion = "2.2.3"
+$script:FrameworkVersion = "2.2.4"
 $script:FrameworkRoot = Split-Path -Parent $PSScriptRoot
 $script:ExecutionStartTime = Get-Date
 

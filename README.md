@@ -5,7 +5,7 @@
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue.svg?logo=powershell)](https://github.com/PowerShell/PowerShell)
 [![Windows 11](https://img.shields.io/badge/Windows%2011-25H2-0078D4.svg?logo=windows11)](https://www.microsoft.com/windows/)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg?logo=gnu)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.2.3-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.2.4-blue.svg)](CHANGELOG.md)
 [![Status](https://img.shields.io/badge/status-production--ready-brightgreen.svg)](CHANGELOG.md)
 [![GitHub Stars](https://img.shields.io/github/stars/NexusOne23/noid-privacy?style=flat&logo=github)](https://github.com/NexusOne23/noid-privacy/stargazers)
 [![Last Commit](https://img.shields.io/github/last-commit/NexusOne23/noid-privacy?style=flat)](https://github.com/NexusOne23/noid-privacy/commits)
@@ -374,17 +374,18 @@ cd noid-privacy
 
 | Module | Settings | Description | Status |
 |--------|----------|-------------|--------|
-| **SecurityBaseline** | 425 | Microsoft Security Baseline 25H2 | v2.2.3 |
-| **ASR** | 19 | Attack Surface Reduction Rules | v2.2.3 |
-| **DNS** | 5 | Secure DNS with DoH encryption | v2.2.3 |
-| **Privacy** | 78 | Telemetry, Bloatware, OneDrive hardening (Strict) | v2.2.3 |
-| **AntiAI** | 32 | AI lockdown (15 features, 32 compliance checks) | v2.2.3 |
-| **EdgeHardening** | 24 | Microsoft Edge security (24 policies) | v2.2.3 |
-| **AdvancedSecurity** | 50 | Beyond MS Baseline (SRP, Legacy protocols, Wireless Display, Discovery Protocols, IPv6) | v2.2.3 |
+| **SecurityBaseline** | 425 | Microsoft Security Baseline 25H2 | v2.2.4 |
+| **ASR** | 19 | Attack Surface Reduction Rules | v2.2.4 |
+| **DNS** | 5 | Secure DNS with DoH encryption | v2.2.4 |
+| **Privacy** | 78 | Telemetry, Bloatware, OneDrive hardening (Strict) | v2.2.4 |
+| **AntiAI** | 32 | AI lockdown (15 features, 32 compliance checks) | v2.2.4 |
+| **EdgeHardening** | 24 | Microsoft Edge security (24 policies) | v2.2.4 |
+| **AdvancedSecurity** | 50 | Beyond MS Baseline (SRP, Legacy protocols, Wireless Display, Discovery Protocols, IPv6) | v2.2.4 |
 | **TOTAL** | **633** | **Complete Framework (Paranoid mode)** | **Production** |
 
 **Release Highlights:**
 
+- **v2.2.4:** EDR/XDR detection — CrowdStrike, SentinelOne, Carbon Black + 15 more ([#15](https://github.com/NexusOne23/noid-privacy/issues/15))
 - **v2.2.3:** Restore Mode crash fix, Recall snapshot storage verification fix ([#14](https://github.com/NexusOne23/noid-privacy/issues/14))
 - **v2.2.2:** Firewall snapshot 60-120s → 2-5s (batch query performance fix)
 - **v2.2.1:** Multi-run session bug fix, `.Count` property bug in 5 files
@@ -518,10 +519,10 @@ When a third-party antivirus is detected, you'll see a clear notification:
   ASR Module Skipped
 ========================================
 
-Third-party antivirus detected: Kaspersky Total Security
+Third-party security product detected: Kaspersky Total Security
 
-ASR rules require Windows Defender to be active.
-Your antivirus (Kaspersky Total Security) has its own protection features.
+ASR rules require Windows Defender as primary antivirus.
+Your security solution (Kaspersky Total Security) has its own protection features.
 
 This is NOT an error - ASR will be skipped.
 ```
@@ -842,8 +843,14 @@ The authors are not responsible for any damage or data loss.
 
 ## 📈 Project Status
 
-**Current Version:** 2.2.3
+**Current Version:** 2.2.4
 **Status:** Production-Ready
+
+### Release Highlights v2.2.4
+
+- **Enhancement:** 3-layer detection for third-party security products (EDR/XDR + traditional AV)
+- **Enhancement:** ASR module gracefully skips when CrowdStrike, SentinelOne, etc. are primary ([#15](https://github.com/NexusOne23/noid-privacy/issues/15))
+- **Tooling:** `VERSION` file + `Bump-Version.ps1` for automated version management
 
 ### Release Highlights v2.2.3
 

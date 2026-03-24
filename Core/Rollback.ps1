@@ -8,7 +8,7 @@
     
 .NOTES
     Author: NexusOne23
-    Version: 2.2.3
+    Version: 2.2.4
     Requires: PowerShell 5.1+
 #>
 
@@ -64,7 +64,7 @@ function Initialize-BackupSystem {
         displayName      = ""                    # Auto-generated based on modules
         sessionType      = "unknown"             # wizard | advanced | manual
         timestamp        = Get-Date -Format "o"
-        frameworkVersion = "2.2.3"
+        frameworkVersion = "2.2.4"
         modules          = @()
         totalItems       = 0
         restorable       = $true
@@ -2298,7 +2298,7 @@ function Restore-Session {
                             "HKCU:\Software\Microsoft\Windows\CurrentVersion\SystemSettings\AccountNotifications",
                             "HKCU:\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement",
                             "HKCU:\SOFTWARE\Microsoft\Personalization\Settings",
-                            # NEW: Input Personalization Settings (v2.2.3 - FIX missing HKCU restore)
+                            # NEW: Input Personalization Settings (v2.2.4 - FIX missing HKCU restore)
                             "HKCU:\SOFTWARE\Microsoft\InputPersonalization",
                             "HKCU:\SOFTWARE\Microsoft\InputPersonalization\TrainedDataStore",
                             "HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\appDiagnostics"

@@ -8,7 +8,7 @@
     
 .NOTES
     Author: NexusOne23
-    Version: 2.2.3
+    Version: 2.2.4
     Requires: PowerShell 5.1+
 #>
 
@@ -79,7 +79,7 @@ function New-DefaultConfig {
     )
     
     $defaultConfig = @{
-        version = "2.2.3"
+        version = "2.2.4"
         modules = @{
             SecurityBaseline = @{
                 enabled                 = $true
@@ -122,7 +122,7 @@ function New-DefaultConfig {
                 status          = "IMPLEMENTED"
                 description     = "Microsoft Edge v139 Security Baseline: 24 security policies"
                 allowExtensions = $true
-                version         = "2.2.3"
+                version         = "2.2.4"
                 baseline        = "Edge v139"
                 policies        = 24
                 features        = @{
@@ -148,7 +148,7 @@ function New-DefaultConfig {
                 disableWirelessDisplay    = $false
                 disableDiscoveryProtocols = $true
                 disableIPv6               = $false
-                version                   = "2.2.3"
+                version                   = "2.2.4"
                 policies                  = 50
                 features                  = @{
                     rdp_hardening                = $true

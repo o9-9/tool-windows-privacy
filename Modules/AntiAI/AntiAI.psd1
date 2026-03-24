@@ -1,6 +1,6 @@
 @{
     RootModule        = 'AntiAI.psm1'
-    ModuleVersion     = '2.2.3'
+    ModuleVersion     = '2.2.4'
     GUID              = 'f8e9d7c6-5b4a-3c2d-1e0f-9a8b7c6d5e4f'
     Author            = 'NexusOne23'
     CompanyName       = 'Open Source Project'

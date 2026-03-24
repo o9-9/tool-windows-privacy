@@ -23,7 +23,7 @@
     
 .NOTES
     Author: NexusOne23
-    Version: 2.2.3
+    Version: 2.2.4
     Can be run without Administrator privileges
 #>
 

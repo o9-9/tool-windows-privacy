@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.4] - 2026-03-24
+
+### 🔧 Enhancement Release
+
+**Third-party security product detection for ASR module and verification.**
+
+### ✨ Added
+
+**EDR/XDR and Third-Party AV Detection ([#15](https://github.com/NexusOne23/noid-privacy/issues/15))**
+- New: 3-layer detection for third-party security products:
+  - Layer 1: WMI `SecurityCenter2` (traditional AV: Bitdefender, Kaspersky, Avira, Norton, ESET, etc.)
+  - Layer 2: Defender Passive Mode via `Get-MpComputerStatus` (EDR/XDR: CrowdStrike, SentinelOne, etc.)
+  - Layer 3: 18 known EDR service names for display identification
+- New: `Test-ThirdPartySecurityProduct` function in `Utils/Dependencies.ps1` (central, reusable)
+- New: `Test-WindowsDefenderAvailable` now reports `IsPassiveMode` property
+- ASR module gracefully skips when third-party product detected (`Success = $true`, not an error)
+- Verify script counts ASR as 19/19 verified when third-party product is primary
+- Reported by: VM-Master
+
+**Version Management**
+- New: `VERSION` file as single source of truth for version numbers
+- New: `Tools/Bump-Version.ps1` — automated version bump across all 61 project files
+  - DryRun mode for preview, CHANGELOG.md excluded (historical entries preserved)
+
+### 📁 Files Changed
+- `Utils/Dependencies.ps1` — New `Test-ThirdPartySecurityProduct`, updated `Test-WindowsDefenderAvailable`, updated `Test-AllDependencies`
+- `Modules/ASR/Public/Invoke-ASRRules.ps1` — 3-layer detection before Defender check, inline fallback for standalone mode
+- `Tools/Verify-Complete-Hardening.ps1` — 3-layer detection, ASR verified as skipped when third-party product active
+- `Tools/Bump-Version.ps1` — New file
+- `VERSION` — New file
+
+---
+
 ## [2.2.3] - 2026-03-05
 
 ### 🔨 Bugfix Release
@@ -405,6 +438,7 @@ Temp File Cleanup:   Complete
 
 **Made with 🛡️ for the Windows Security Community**
 
+[2.2.4]: https://github.com/NexusOne23/noid-privacy/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/NexusOne23/noid-privacy/compare/v2.2.2...v2.2.3
 [2.2.2]: https://github.com/NexusOne23/noid-privacy/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/NexusOne23/noid-privacy/compare/v2.2.0...v2.2.1

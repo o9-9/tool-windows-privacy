@@ -1,5 +1,5 @@
 # AdvancedSecurity Module Loader
-# Version: 2.2.3
+# Version: 2.2.4
 # Description: Advanced Security Hardening - Beyond Microsoft Security Baseline
 
 # Get module path

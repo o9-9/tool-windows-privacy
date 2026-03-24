@@ -12,7 +12,7 @@
     
 .NOTES
     Author: NoID Privacy
-    Version: 2.2.3
+    Version: 2.2.4
     Requires: PowerShell 5.1+, Administrator privileges
 #>
 
